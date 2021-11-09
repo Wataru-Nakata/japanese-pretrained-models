@@ -1,0 +1,25 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[dev-packages]
+
+[packages]
+torch = ">=1.7.1"
+transformers = ">=4.5.0"
+tensorflow = "*"
+tensorboard = "*"
+sentencepiece = "*"
+tqdm = "*"
+fugashi = "*"
+unidic = "*"
+pandas = "*"
+tensorflow-hub = "*"
+tensorflow-text = "*"
+feather-format = "*"
+nltk = "*"
+konoha = "*"
+
+[requires]
+python_version = "3.8"

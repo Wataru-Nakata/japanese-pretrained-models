@@ -15,11 +15,9 @@
 
 class Config(object):
     def __init__(self):
-        self.corpus_name = "jp_wiki"
+        self.corpus_name = "sentnce_book"
 
         # Management
-        self.download_link = "https://dumps.wikimedia.org/other/cirrussearch/20211018/jamwiki-20211018-cirrussearch-content.json.gz"
-        self.raw_data_dir = "../data/jp_wiki/raw_data"
-        self.raw_data_path = f"{self.raw_data_dir}/wiki.json.gz"
-        self.extracted_data_path = f"{self.raw_data_dir}/wiki.extracted.txt"
-        self.doc_data_dir = "../data/jp_wiki/doc_data"
+        self.raw_data_dirs = ["/media/ssd/corpus/books1/epubtxt/","/media/ssd/bccwj-parser/data/"]
+        self.languages = ["en","ja"]
+        self.doc_data_dir = "../data/sentence-book/doc_data"

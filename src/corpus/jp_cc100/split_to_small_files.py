@@ -19,7 +19,7 @@ from tqdm import tqdm
 from corpus.jp_cc100.config import Config
 
 config = Config()
-N_LINES_PER_FILE = 1e6
+N_LINES_PER_FILE = 1e4
 
 if __name__ == "__main__":
     if not os.path.exists(f"{config.doc_data_dir}"):

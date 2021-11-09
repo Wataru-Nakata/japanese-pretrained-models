@@ -28,5 +28,5 @@
         "max_length": 50
       }
     },
-    "vocab_size": 32000
+    "vocab_size": 32768
 }
