@@ -9,6 +9,7 @@ class SentenceRoberta(nn.Module):
         if not input_dim == roberta_config.hidden_size:
             self.use_input_linear = True
             self.input_linear = nn.Linear(input_dim,roberta_config.hidden_size)
+            self.output_linear = nn.Linear(roberta_config.hidden_size,input_dim)
         else:
             self.use_input_linear = False
     def forward(self,roberta_input):
@@ -21,6 +22,8 @@ class SentenceRoberta(nn.Module):
             position_ids = roberta_input['position_ids'],
             inputs_embeds = input_embeds
         )
+        if self.use_input_linear:
+            out.last_hidden_state = self.output_linear(out.last_hidden_state)
         return out
 
 

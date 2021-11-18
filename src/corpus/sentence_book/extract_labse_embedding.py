@@ -37,6 +37,8 @@ if __name__ == '__main__':
         languages += [lang]*len(list(Path(raw_data_dir).glob('*.txt')))
     print("process {} files".format(len(files)))
     for file,lang in tqdm(zip(files,languages)):
+        if (Path(config.doc_data_dir)/file.with_suffix('.feather').name).exists():
+            continue
         with open(file,mode='r') as f:
             lines = f.readlines()
         lines = [line for line in lines if line.strip()] 
