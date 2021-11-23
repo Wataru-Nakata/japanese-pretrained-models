@@ -18,6 +18,6 @@ class Config(object):
         self.corpus_name = "sentnce_book"
 
         # Management
-        self.raw_data_dirs = ["/media/ssd/corpus/books1/epubtxt/","/media/ssd/bccwj-parser/data/"]
-        self.languages = ["en","ja"]
+        self.raw_data_dirs = ["../data/corpus/books1/","../data/corpus/bccwj/", "../data/corpus/narou/"]
+        self.languages = ["en","ja", "ja"]
         self.doc_data_dir = "../data/sentence-book/doc_data"
