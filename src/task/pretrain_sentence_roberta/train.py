@@ -143,8 +143,8 @@ def train(local_rank, config):
 
     sentence_book_config = SentenceBookConfig()
 
-    training_files = h5py.File('../data/sentence-book.dataset.hdf5',mode='r')['train'].keys()
-    dev_files =  h5py.File('../data/sentence-book.dataset.hdf5',mode='r')['val'].keys()  
+    training_files = [k for k in h5py.File('../data/sentence-book/dataset.hdf5',mode='r')['train'].keys()]
+    dev_files =  [k for k in h5py.File('../data/sentence-book/dataset.hdf5',mode='r')['val'].keys() ] 
 
     mp_print(f"Number of training files: {len(training_files)}", global_rank)
     mp_print(f"Number of dev files: {len(dev_files)}", global_rank)
@@ -160,7 +160,7 @@ def train(local_rank, config):
         dev_dataloader = torch.utils.data.DataLoader(
             dev_data_source,
             batch_size=config.eval_batch_size,
-            num_workers=8,
+            num_workers=0,
             collate_fn=collate_fn,
             pin_memory=True
         )
@@ -292,7 +292,7 @@ def train(local_rank, config):
                     train_data_source,
                     batch_size=config.batch_size,
                     sampler=train_data_sampler,
-                    num_workers=8,
+                    num_workers=0,
                     collate_fn=collate_fn,
                     pin_memory=True
                 )
@@ -307,7 +307,7 @@ def train(local_rank, config):
                     train_data_source,
                     batch_size=config.batch_size,
                     sampler=train_data_sampler,
-                    num_workers=8,
+                    num_workers=0,
                     collate_fn=collate_fn,
                     pin_memory=True
                 )
