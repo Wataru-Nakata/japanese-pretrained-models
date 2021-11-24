@@ -33,7 +33,7 @@ from torch.utils.data import RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 from transformers import RobertaForMaskedLM, PretrainedConfig
 
-from task.pretrain_sentence_roberta.data_source import DataSource, collate_fn
+from task.pretrain_sentence_roberta.data_source import DataSource
 from task.helpers import StatisticsReporter
 from optimization.lr_scheduler import get_linear_schedule_with_warmup
 from task.pretrain_sentence_roberta.sentence_roberta import SentenceRoberta
@@ -63,6 +63,8 @@ def forward_step(model, batch_data):
     data_dict['input_embeds'] = data_dict['input_embeds'].to(model.device)
     data_dict['position_ids'] = data_dict['position_ids'].to(model.device)
     data_dict['attn_masks'] = data_dict['attn_masks'].to(model.device)
+    correct_tokens = correct_tokens.to(model.device)
+    masked_tokens = masked_tokens.to(model.device)
     # forward
     model_outputs = model(
         data_dict
@@ -124,7 +126,7 @@ def train(local_rank, config):
             dev_data_source,
             batch_size=config.eval_batch_size,
             num_workers=8,
-            collate_fn=collate_fn,
+            collate_fn=dev_data_source.collate_fn,
             pin_memory=True
         )
 
@@ -256,7 +258,7 @@ def train(local_rank, config):
                     batch_size=config.batch_size,
                     sampler=train_data_sampler,
                     num_workers=8,
-                    collate_fn=collate_fn,
+                    collate_fn=train_data_source.collate_fn,
                     pin_memory=True
                 )
             # multi gpus
@@ -271,7 +273,7 @@ def train(local_rank, config):
                     batch_size=config.batch_size,
                     sampler=train_data_sampler,
                     num_workers=8,
-                    collate_fn=collate_fn,
+                    collate_fn=train_data_source.collate_fn,
                     pin_memory=True
                 )
 
@@ -288,7 +290,7 @@ def train(local_rank, config):
                 # forward
                 model.train()
                 with amp.autocast():
-                    loss, ppl = forward_step(model,train_data_source, batch_data, config.mask_prob)
+                    loss, ppl = forward_step(model, batch_data)
 
                 # update statisitcs
                 trn_reporter.update_data({ "loss": loss.item()})
@@ -346,7 +348,7 @@ def train(local_rank, config):
 
                         for eval_batch_idx, eval_batch_data in enumerate(dev_dataloader):
                             with amp.autocast():
-                                loss, ppl = forward_step(eval_model,dev_data_source, eval_batch_data, config.mask_prob)
+                                loss, ppl = forward_step(eval_model,eval_batch_data)
                             dev_reporter.update_data({ "loss": loss.item()})
 
                             if eval_batch_idx == len(dev_dataloader) - 1:
