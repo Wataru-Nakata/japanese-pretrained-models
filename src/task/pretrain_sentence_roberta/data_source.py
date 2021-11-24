@@ -21,8 +21,6 @@ import os
 import h5py
 
 
-def collate_fn(batch_data):
-    return batch_data
 
 
 
@@ -38,6 +36,7 @@ class DataSource(torch.utils.data.Dataset):
 
         # Load dataset
         self.docs = docs
+        self.mask_prob = 0.15
 
         # Calculate basic statistics
         self.statistics["n_docs"] = len(self.docs)
@@ -66,3 +65,41 @@ class DataSource(torch.utils.data.Dataset):
         seq = [self.cls_token()] + seq[start_pos:start_pos+self.max_seq_len - 1].tolist()
 
         return seq
+    def collate_fn(self,seqs):
+        batch_size = len(seqs)
+        max_seq_len = max([len(seq) for seq in seqs])
+
+        # padding input sequences
+        seqs = [seq + [self.pad_token()]*(max_seq_len-len(seq)) for seq in seqs]
+
+        # convert to tensors
+        seqs = torch.FloatTensor(np.array(seqs))
+
+        # get mask token masks
+        special_token_masks = torch.zeros(seqs[:,:,0].size()).bool()
+        for special_token_id in [self.pad_token(), self.cls_token()]:
+            special_token_masks = special_token_masks | (seqs == special_token_id)
+        # sample mask token masks
+        mask_token_probs = torch.FloatTensor([self.mask_prob]).expand_as(seqs[:,:,0])  # [batch_size, max_seq_len]
+        mask_token_probs = mask_token_probs.masked_fill(special_token_masks, 0.0)
+        while True:  # prevent that there is not any mask token
+            mask_token_masks = torch.bernoulli(mask_token_probs).bool()
+            if (mask_token_masks.long().sum(1) == 0).sum() == 0:
+                break
+
+        # input ids
+        input_ids = seqs.clone()
+        input_ids[mask_token_masks] = torch.FloatTensor(self.mask_token())
+
+        # position ids
+        position_ids = [list(range(max_seq_len))] * batch_size
+        position_ids = torch.LongTensor(position_ids)
+
+        attn_masks = input_ids.sum(dim=2) == torch.FloatTensor(self.pad_token()).sum()
+        attn_masks = torch.tensor(~attn_masks,dtype=torch.float)
+
+        return {
+            "input_embeds": input_ids,
+            "position_ids": position_ids,
+            "attn_masks": attn_masks
+        }, seqs,mask_token_masks
