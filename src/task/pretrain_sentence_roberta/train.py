@@ -18,6 +18,7 @@ import random
 import time
 import argparse
 import os
+import h5py
 
 import numpy as np
 import torch
@@ -142,13 +143,8 @@ def train(local_rank, config):
 
     sentence_book_config = SentenceBookConfig()
 
-    training_files = os.listdir(sentence_book_config.doc_data_dir)
-    random.shuffle(training_files)
-    dev_idx = random.randint(0, len(training_files)-1)
-    num_dev_files = 1000
-    dev_files = training_files[dev_idx:dev_idx + num_dev_files]
-    for i in range(num_dev_files):
-        training_files.pop(dev_idx + i)
+    training_files = h5py.File('../data/sentence-book.dataset.hdf5',mode='r')['train'].keys()
+    dev_files =  h5py.File('../data/sentence-book.dataset.hdf5',mode='r')['val'].keys()  
 
     mp_print(f"Number of training files: {len(training_files)}", global_rank)
     mp_print(f"Number of dev files: {len(dev_files)}", global_rank)
@@ -157,10 +153,9 @@ def train(local_rank, config):
     if global_rank == 0:
         dev_docs = dev_files
         
-        random.shuffle(dev_docs)
 
         mp_print("----- Loading dev data -----", global_rank)
-        dev_data_source = DataSource(config,dev_docs, "dev")
+        dev_data_source = DataSource(config,dev_docs, "val")
         mp_print(str(dev_data_source.statistics), global_rank)
         dev_dataloader = torch.utils.data.DataLoader(
             dev_data_source,

@@ -18,6 +18,7 @@ import torch
 import numpy as np
 import pandas as pd
 import os
+import h5py
 
 
 def collate_fn(batch_data):
@@ -34,10 +35,10 @@ class DataSource(torch.utils.data.Dataset):
         self.stage = stage
         self.statistics = {"n_docs": 0, "n_sents": 0, "n_tokens": 0}
         self.num_sentence_embedding_dim = config.num_sentence_embedding_dim
+        self.hdf5 = h5py.File('../data/sentence-book/dataset.hdf5', 'r')
 
         # Load dataset
         self.docs = docs
-        self.dfs = []
 
         # Calculate basic statistics
         self.statistics["n_docs"] = len(self.docs)
@@ -45,7 +46,6 @@ class DataSource(torch.utils.data.Dataset):
             self.statistics["n_sents"] += len(doc)
             for sent in doc:
                 self.statistics["n_tokens"] += len(sent)
-            self.dfs.append(pd.read_feather(os.path.join('../data/sentence-book/doc_data',doc))['embeds'])
 
     def __len__(self):
         return len(self.docs)
@@ -57,13 +57,12 @@ class DataSource(torch.utils.data.Dataset):
         return [-1]*self.num_sentence_embedding_dim
 
     def __getitem__(self, idx):
-        df = self.dfs[idx]
-        seq = df.to_list()
+        seq = self.hdf5[self.stage + '/' + self.docs[idx]]
         
         if len(seq) > self.max_seq_len:
             start_pos = torch.randint(0,len(seq) - self.max_seq_len,(1,))
         else:
             start_pos = 0
-        seq = [self.cls_token()] + seq[start_pos:start_pos+self.max_seq_len - 1]
+        seq = [self.cls_token()] + seq[start_pos:start_pos+self.max_seq_len - 1].tolist()
 
         return seq
