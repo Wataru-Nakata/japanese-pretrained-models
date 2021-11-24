@@ -37,6 +37,7 @@ class DataSource(torch.utils.data.Dataset):
 
         # Load dataset
         self.docs = docs
+        self.dfs = []
 
         # Calculate basic statistics
         self.statistics["n_docs"] = len(self.docs)
@@ -44,6 +45,7 @@ class DataSource(torch.utils.data.Dataset):
             self.statistics["n_sents"] += len(doc)
             for sent in doc:
                 self.statistics["n_tokens"] += len(sent)
+            self.dfs.append(pd.read_feather(os.path.join('../data/sentence-book/doc_data',doc))['embeds'])
 
     def __len__(self):
         return len(self.docs)
@@ -55,9 +57,8 @@ class DataSource(torch.utils.data.Dataset):
         return [-1]*self.num_sentence_embedding_dim
 
     def __getitem__(self, idx):
-        doc = self.docs[idx]
-        df = pd.read_feather(os.path.join('/media/ssd/japanese-pretrained-models/data/sentence-book/doc_data',doc))
-        seq = df['embeds'].to_list()
+        df = self.dfs[idx]
+        seq = df.to_list()
         
         if len(seq) > self.max_seq_len:
             start_pos = torch.randint(0,len(seq) - self.max_seq_len,(1,))

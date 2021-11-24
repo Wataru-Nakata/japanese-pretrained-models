@@ -21,9 +21,9 @@ class SentenceRoberta(nn.Module):
             attention_mask= roberta_input['attn_masks'],
             position_ids = roberta_input['position_ids'],
             inputs_embeds = input_embeds
-        )
+        ).last_hidden_state
         if self.use_input_linear:
-            out.last_hidden_state = self.output_linear(out.last_hidden_state)
+            out = self.output_linear(out)
         return out
 
 

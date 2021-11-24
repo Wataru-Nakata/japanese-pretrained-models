@@ -96,14 +96,14 @@ def construct_data(special_tokens, seqs, mask_prob, device):
 
 
 def forward_step(model,data_source, batch_data, mask_prob):
-    data_dict, correct_tokens, masked_tokens = construct_data(data_source,batch_data, mask_prob, model.roberta.device)
+    data_dict, correct_tokens, masked_tokens = construct_data(data_source,batch_data, mask_prob, model.device)
     
     
     # forward
     model_outputs = model(
         data_dict
     )
-    loss = F.mse_loss(model_outputs.last_hidden_state[masked_tokens], correct_tokens[masked_tokens])
+    loss = F.mse_loss(model_outputs[masked_tokens], correct_tokens[masked_tokens])
     ppl = None
 
     return loss, ppl
@@ -143,9 +143,12 @@ def train(local_rank, config):
     sentence_book_config = SentenceBookConfig()
 
     training_files = os.listdir(sentence_book_config.doc_data_dir)
+    random.shuffle(training_files)
     dev_idx = random.randint(0, len(training_files)-1)
-    dev_files = training_files[dev_idx:dev_idx + 10]
-    training_files.pop(dev_idx)
+    num_dev_files = 1000
+    dev_files = training_files[dev_idx:dev_idx + num_dev_files]
+    for i in range(num_dev_files):
+        training_files.pop(dev_idx + i)
 
     mp_print(f"Number of training files: {len(training_files)}", global_rank)
     mp_print(f"Number of dev files: {len(dev_files)}", global_rank)
@@ -189,7 +192,8 @@ def train(local_rank, config):
     if config.world_size > 1:
         model = DDP(
             model, 
-            device_ids=[local_rank]
+            device_ids=[local_rank],
+            find_unused_parameters=True
         )
 
     # build optimizer
@@ -308,9 +312,9 @@ def train(local_rank, config):
                     train_data_source,
                     batch_size=config.batch_size,
                     sampler=train_data_sampler,
-                    num_workers=0,
+                    num_workers=8,
                     collate_fn=collate_fn,
-                    pin_memory=False
+                    pin_memory=True
                 )
 
             if isinstance(train_data_sampler, DistributedSampler):
