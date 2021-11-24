@@ -35,7 +35,6 @@ class DataSource(torch.utils.data.Dataset):
         self.stage = stage
         self.statistics = {"n_docs": 0, "n_sents": 0, "n_tokens": 0}
         self.num_sentence_embedding_dim = config.num_sentence_embedding_dim
-        self.hdf5 = h5py.File('../data/sentence-book/dataset.hdf5', 'r')
 
         # Load dataset
         self.docs = docs
@@ -57,7 +56,8 @@ class DataSource(torch.utils.data.Dataset):
         return [-1]*self.num_sentence_embedding_dim
 
     def __getitem__(self, idx):
-        seq = self.hdf5[self.stage + '/' + self.docs[idx]]
+        with h5py.File('../data/sentence-book/dataset.hdf5', 'r') as f:
+            seq = f[self.stage + '/' + self.docs[idx]]
         
         if len(seq) > self.max_seq_len:
             start_pos = torch.randint(0,len(seq) - self.max_seq_len,(1,))

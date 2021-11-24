@@ -160,7 +160,7 @@ def train(local_rank, config):
         dev_dataloader = torch.utils.data.DataLoader(
             dev_data_source,
             batch_size=config.eval_batch_size,
-            num_workers=0,
+            num_workers=8,
             collate_fn=collate_fn,
             pin_memory=True
         )
@@ -292,7 +292,7 @@ def train(local_rank, config):
                     train_data_source,
                     batch_size=config.batch_size,
                     sampler=train_data_sampler,
-                    num_workers=0,
+                    num_workers=8,
                     collate_fn=collate_fn,
                     pin_memory=True
                 )
@@ -307,7 +307,7 @@ def train(local_rank, config):
                     train_data_source,
                     batch_size=config.batch_size,
                     sampler=train_data_sampler,
-                    num_workers=0,
+                    num_workers=8,
                     collate_fn=collate_fn,
                     pin_memory=True
                 )
@@ -452,7 +452,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42, help="random initialization seed")
     parser.add_argument("--batch_size", type=int, default=32, help="batch size for training. 32 for base.")
     parser.add_argument("--eval_batch_size", type=int, default=32, help="batch size for evaluation")
-    parser.add_argument("--n_train_files_per_group", type=int, default=10000, help="number of files to load for every loading")
+    parser.add_argument("--n_train_files_per_group", type=int, default=1000, help="number of files to load for every loading")
     parser.add_argument("--n_training_steps", type=int, default=3e6, help="number of maximum training steps. 3e6 for base.")
     parser.add_argument("--n_epochs", type=int, default=10, help="number of maximum training epochs")
     parser.add_argument("--n_warmup_steps", type=int, default=1e4, help="number of warmup steps. 1e4 for base.")
