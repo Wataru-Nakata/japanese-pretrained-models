@@ -22,19 +22,28 @@ from konoha import SentenceTokenizer
 
 from corpus.sentence_book.LaBSEExtractor import LabseExtractor
 from corpus.sentence_book.config import Config
+import argparse
 
 config = Config()
 
+def chunks(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='extract labse embedding for sentence_roberta')
+    parser.add_argument('num', metavar='N', type=int)
+    args = parser.parse_args()
     extractor = LabseExtractor()
     files = []
     languages = []
+    print('args',args.num)
     japanese_tokenizer = SentenceTokenizer()
     os.makedirs(config.doc_data_dir,exist_ok=True)
     for raw_data_dir,lang in zip(config.raw_data_dirs,config.languages):
-        files += list(Path(raw_data_dir).glob('*.txt'))
-        languages += [lang]*len(list(Path(raw_data_dir).glob('*.txt')))
+        files += list((Path(raw_data_dir)).glob('*.txt'))
+        languages += [lang]*len(list((Path(raw_data_dir)).glob('*.txt')))
     print("process {} files".format(len(files)))
     for file,lang in tqdm(zip(files,languages)):
         if (Path(config.doc_data_dir)/file.with_suffix('.feather').name).exists():
@@ -48,7 +57,7 @@ if __name__ == '__main__':
                 sents += sent_tokenize(line,language='english')
         elif lang == 'ja':
             for line in lines:
-                sents += japanese_tokenizer(line)
+                sents += japanese_tokenizer.tokenize(line)
         else:
             raise ValueError
         sentence_embeds = extractor.extract_embeds(sents)
