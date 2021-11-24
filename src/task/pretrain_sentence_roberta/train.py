@@ -143,8 +143,8 @@ def train(local_rank, config):
 
     sentence_book_config = SentenceBookConfig()
 
-    training_files = h5py.File('../data/sentence-book.dataset.hdf5',mode='r')['train'].keys()
-    dev_files =  h5py.File('../data/sentence-book.dataset.hdf5',mode='r')['val'].keys()  
+    training_files = h5py.File('../data/sentence-book/dataset.hdf5',mode='r')['train'].keys()
+    dev_files =  h5py.File('../data/sentence-book/dataset.hdf5',mode='r')['val'].keys()  
 
     mp_print(f"Number of training files: {len(training_files)}", global_rank)
     mp_print(f"Number of dev files: {len(dev_files)}", global_rank)
