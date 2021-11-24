@@ -96,7 +96,7 @@ class DataSource(torch.utils.data.Dataset):
         position_ids = torch.LongTensor(position_ids)
 
         attn_masks = input_ids.sum(dim=2) == torch.FloatTensor(self.pad_token()).sum()
-        attn_masks = torch.tensor(~attn_masks,dtype=torch.float)
+        attn_masks = (~attn_masks).float()
 
         return {
             "input_embeds": input_ids,

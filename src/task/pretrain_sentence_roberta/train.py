@@ -125,7 +125,7 @@ def train(local_rank, config):
         dev_dataloader = torch.utils.data.DataLoader(
             dev_data_source,
             batch_size=config.eval_batch_size,
-            num_workers=8,
+            num_workers=0,
             collate_fn=dev_data_source.collate_fn,
             pin_memory=True
         )
@@ -193,7 +193,7 @@ def train(local_rank, config):
             mp_print("recovering others...", global_rank)
             n_step = checkpoint["n_step"]
             start_n_epoch = checkpoint["n_epoch"]
-            start_train_file_idx = checkpoint["start_train_file_idx"]
+            start_train_file_idx = 0
             best_loss = checkpoint.get("best_loss", float("inf"))
         else:
             n_step = 0
@@ -240,167 +240,160 @@ def train(local_rank, config):
     for k, v in sorted(dict(config.__dict__).items()):
         mlog("{}: {}".format(k, v))
 
+    train_data_source = DataSource(config, training_files, "train")
+    # single gpu or cpu
+    if config.world_size == 1 or not torch.cuda.is_available():
+        train_data_sampler = RandomSampler(
+            train_data_source,
+            replacement=False
+        )
+        train_dataloader = torch.utils.data.DataLoader(
+            train_data_source,
+            batch_size=config.batch_size,
+            sampler=train_data_sampler,
+            num_workers=4,
+            collate_fn=train_data_source.collate_fn,
+            pin_memory=True
+        )
+    # multi gpus
+    else:
+        train_data_sampler = DistributedSampler(
+            train_data_source,
+            num_replicas=config.world_size,
+            rank=global_rank
+        )
+        train_dataloader = torch.utils.data.DataLoader(
+            train_data_source,
+            batch_size=config.batch_size,
+            sampler=train_data_sampler,
+            num_workers=4,
+            collate_fn=train_data_source.collate_fn,
+            pin_memory=True
+        )
+    mp_print(str(train_data_source.statistics), global_rank)
     for epoch_idx in range(start_n_epoch, config.n_epochs):
-        for train_file_idx in range(start_train_file_idx, len(training_files), config.n_train_files_per_group):
-            
-            train_docs = training_files[train_file_idx:train_file_idx+config.n_train_files_per_group]
-            
-            train_data_source = DataSource(config, train_docs, "train")
-            mp_print(str(train_data_source.statistics), global_rank)
-            # single gpu or cpu
-            if config.world_size == 1 or not torch.cuda.is_available():
-                train_data_sampler = RandomSampler(
-                    train_data_source,
-                    replacement=False
-                )
-                train_dataloader = torch.utils.data.DataLoader(
-                    train_data_source,
-                    batch_size=config.batch_size,
-                    sampler=train_data_sampler,
-                    num_workers=8,
-                    collate_fn=train_data_source.collate_fn,
-                    pin_memory=True
-                )
-            # multi gpus
+        if isinstance(train_data_sampler, DistributedSampler):
+            train_data_sampler.set_epoch(epoch_idx)
+
+        for batch_data in train_dataloader:
+            n_step += 1
+
+            # stop if reaches the maximum tranining step
+            if n_step >= config.n_training_steps:
+                break
+
+            # forward
+            model.train()
+            with amp.autocast():
+                loss, ppl = forward_step(model, batch_data)
+
+            # update statisitcs
+            trn_reporter.update_data({ "loss": loss.item()})
+
+            # backward
+            loss /= config.n_accum_steps
+            if config.use_amp:
+                scaler.scale(loss).backward()
             else:
-                train_data_sampler = DistributedSampler(
-                    train_data_source,
-                    num_replicas=config.world_size,
-                    rank=global_rank
-                )
-                train_dataloader = torch.utils.data.DataLoader(
-                    train_data_source,
-                    batch_size=config.batch_size,
-                    sampler=train_data_sampler,
-                    num_workers=8,
-                    collate_fn=train_data_source.collate_fn,
-                    pin_memory=True
-                )
+                loss.backward()
+            del loss
 
-            if isinstance(train_data_sampler, DistributedSampler):
-                train_data_sampler.set_epoch(epoch_idx)
-
-            for batch_data in train_dataloader:
-                n_step += 1
-
-                # stop if reaches the maximum tranining step
-                if n_step >= config.n_training_steps:
-                    break
-
-                # forward
-                model.train()
-                with amp.autocast():
-                    loss, ppl = forward_step(model, batch_data)
-
-                # update statisitcs
-                trn_reporter.update_data({ "loss": loss.item()})
-
-                # backward
-                loss /= config.n_accum_steps
-                if config.use_amp:
-                    scaler.scale(loss).backward()
-                else:
-                    loss.backward()
-                del loss
-
-                if n_step % config.n_accum_steps == 0:
-                    # clip gradient
-                    if config.max_grad_norm > 0.0:
-                        if config.use_amp:
-                            scaler.unscale_(optimizer)
-                        torch.nn.utils.clip_grad_norm_(model.parameters(), config.max_grad_norm)
-
-                    # update model parameters
+            if n_step % config.n_accum_steps == 0:
+                # clip gradient
+                if config.max_grad_norm > 0.0:
                     if config.use_amp:
-                        scaler.step(optimizer)
-                        scaler.update()
-                    else:
-                        optimizer.step()
+                        scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), config.max_grad_norm)
 
-                    # zero gradients
-                    optimizer.zero_grad()
+                # update model parameters
+                if config.use_amp:
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    optimizer.step()
 
-                # check loss
-                if n_step > 0 and n_step % config.check_loss_after_n_step == 0:
-                    lr = list(lr_scheduler.optimizer.param_groups)[0]["lr"]
-                    log_s = f"{time.time()-start_time:.2f}s Epoch {epoch_idx}, step {n_step}, lr {lr:.5g} - "
-                    log_s += trn_reporter.to_string()
-                    mlog(log_s)
+                # zero gradients
+                optimizer.zero_grad()
 
-                    if config.enable_log and global_rank == 0:
-                        for k, v in trn_reporter.items():
-                            tb_writer.add_scalar(f"{k}/train", np.mean(v), n_step)
+            # check loss
+            if n_step > 0 and n_step % config.check_loss_after_n_step == 0:
+                lr = list(lr_scheduler.optimizer.param_groups)[0]["lr"]
+                log_s = f"{time.time()-start_time:.2f}s Epoch {epoch_idx}, step {n_step}, lr {lr:.5g} - "
+                log_s += trn_reporter.to_string()
+                mlog(log_s)
 
-                    trn_reporter.clear()
+                if config.enable_log and global_rank == 0:
+                    for k, v in trn_reporter.items():
+                        tb_writer.add_scalar(f"{k}/train", np.mean(v), n_step)
 
-                # evaluation on dev dataset
-                if global_rank == 0 and n_step > 0 and n_step % config.validate_after_n_step == 0:
+                trn_reporter.clear()
+
+            # evaluation on dev dataset
+            if global_rank == 0 and n_step > 0 and n_step % config.validate_after_n_step == 0:
+                
+                # forward
+                with torch.no_grad():
+                    model.eval()
                     
-                    # forward
-                    with torch.no_grad():
-                        model.eval()
-                        
-                        # use only 1 gpu for evaluation in multi-gpu situation
-                        if config.world_size > 1:
-                            eval_model = model.module
-                        else:
-                            eval_model = model
+                    # use only 1 gpu for evaluation in multi-gpu situation
+                    if config.world_size > 1:
+                        eval_model = model.module
+                    else:
+                        eval_model = model
 
-                        for eval_batch_idx, eval_batch_data in enumerate(dev_dataloader):
-                            with amp.autocast():
-                                loss, ppl = forward_step(eval_model,eval_batch_data)
-                            dev_reporter.update_data({ "loss": loss.item()})
+                    for eval_batch_idx, eval_batch_data in enumerate(dev_dataloader):
+                        with amp.autocast():
+                            loss, ppl = forward_step(eval_model,eval_batch_data)
+                        dev_reporter.update_data({ "loss": loss.item()})
 
-                            if eval_batch_idx == len(dev_dataloader) - 1:
-                                break
+                        if eval_batch_idx == len(dev_dataloader) - 1:
+                            break
 
-                    log_s = f"\n<Dev> - {time.time()-start_time:.3f}s - "
-                    log_s += dev_reporter.to_string()
-                    mlog(log_s)
+                log_s = f"\n<Dev> - {time.time()-start_time:.3f}s - "
+                log_s += dev_reporter.to_string()
+                mlog(log_s)
 
-                    # Save model if it has better monitor measurement
-                    if config.save_model:
-                        if not os.path.exists(f"../data/model/{TASK}"):
-                            os.makedirs(f"../data/model/{TASK}")
+                # Save model if it has better monitor measurement
+                if config.save_model:
+                    if not os.path.exists(f"../data/model/{TASK}"):
+                        os.makedirs(f"../data/model/{TASK}")
 
-                        model_to_save = model.module if hasattr(model, 'module') else model
+                    model_to_save = model.module if hasattr(model, 'module') else model
 
-                        # save current model
-                        checkpoint = {
-                            "model": model_to_save.state_dict(),
-                            "optimizer": optimizer.state_dict(),
-                            "lr_scheduler": lr_scheduler.state_dict(),
-                            "n_epoch": epoch_idx,
-                            "n_step": n_step,
-                            "start_train_file_idx": train_file_idx,
-                            "output_fileid": OUTPUT_FILEID,
-                        }
+                    # save current model
+                    checkpoint = {
+                        "model": model_to_save.state_dict(),
+                        "optimizer": optimizer.state_dict(),
+                        "lr_scheduler": lr_scheduler.state_dict(),
+                        "n_epoch": epoch_idx,
+                        "n_step": n_step,
+                        "output_fileid": OUTPUT_FILEID,
+                    }
+                    torch.save(
+                        checkpoint,
+                        f"../data/model/{TASK}/{OUTPUT_FILEID}.checkpoint"
+                    )
+                    mlog(f"checkpoint saved to data/model/{TASK}/{OUTPUT_FILEID}.checkpoint")
+
+                    # save best model
+                    cur_loss = dev_reporter.get_value("loss")
+                    if cur_loss < best_loss:
+                        best_loss = cur_loss
+
                         torch.save(
                             checkpoint,
-                            f"../data/model/{TASK}/{OUTPUT_FILEID}.checkpoint"
+                            f"../data/model/{TASK}/{OUTPUT_FILEID}.best.checkpoint"
                         )
-                        mlog(f"checkpoint saved to data/model/{TASK}/{OUTPUT_FILEID}.checkpoint")
+                        mlog(f"best checkpoint saved to data/model/{TASK}/{OUTPUT_FILEID}.best.checkpoint")
 
-                        # save best model
-                        cur_loss = dev_reporter.get_value("loss")
-                        if cur_loss < best_loss:
-                            best_loss = cur_loss
+                if config.enable_log:
+                    for k, v in dev_reporter.items():
+                        tb_writer.add_scalar(f"{k}/dev", np.mean(v), n_step)
 
-                            torch.save(
-                                checkpoint,
-                                f"../data/model/{TASK}/{OUTPUT_FILEID}.best.checkpoint"
-                            )
-                            mlog(f"best checkpoint saved to data/model/{TASK}/{OUTPUT_FILEID}.best.checkpoint")
-
-                    if config.enable_log:
-                        for k, v in dev_reporter.items():
-                            tb_writer.add_scalar(f"{k}/dev", np.mean(v), n_step)
-
-                    dev_reporter.clear()
-                    torch.cuda.empty_cache()
-
-                # decay learning rate
-                lr_scheduler.step()
+                dev_reporter.clear()
+                torch.cuda.empty_cache()
+            # decay learning rate
+            lr_scheduler.step()
 
         # reset starting training file index for every epoch (if might be set to a larger value if resuming from a checkpoint)
         start_train_file_idx = 0

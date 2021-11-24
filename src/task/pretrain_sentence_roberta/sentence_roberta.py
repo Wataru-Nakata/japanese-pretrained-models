@@ -6,6 +6,7 @@ class SentenceRoberta(nn.Module):
     def __init__(self,input_dim:int,roberta_config:RobertaConfig) -> None:
         super().__init__()
         self.roberta = RobertaModel(roberta_config)
+        self.roberta.embeddings.word_embeddings = None
         if not input_dim == roberta_config.hidden_size:
             self.use_input_linear = True
             self.input_linear = nn.Linear(input_dim,roberta_config.hidden_size)
