@@ -47,7 +47,7 @@ class DataSource(torch.utils.data.Dataset):
                 self.statistics["n_tokens"] += len(sent)
 
     def __len__(self):
-        return len(self.docs)
+        return self.statistics["n_sents"]
     def cls_token(self):
         return [0]*self.num_sentence_embedding_dim
     def pad_token(self):
@@ -56,8 +56,8 @@ class DataSource(torch.utils.data.Dataset):
         return [-1]*self.num_sentence_embedding_dim
 
     def __getitem__(self, idx):
-        with h5py.File('../data/sentence-book/dataset.hdf5', 'r') as f:
-            seq = f[self.stage + '/' + self.docs[idx]]
+        with h5py.File(os.environ['SGE_LOCALDIR'] + '/dataset.hdf5', 'r') as f:
+            seq = f[self.stage + '/' + self.docs[idx%len(self.docs)]][:]
         
         if len(seq) > self.max_seq_len:
             start_pos = torch.randint(0,len(seq) - self.max_seq_len,(1,))
