@@ -20,6 +20,7 @@ tensorflow-text = "*"
 feather-format = "*"
 nltk = "*"
 konoha = "*"
+sentence-transformers = "*"
 
 [requires]
 python_version = "3.8"
