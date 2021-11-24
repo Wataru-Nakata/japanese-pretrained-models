@@ -56,50 +56,13 @@ def load_docs_from_filepath(filepath):
     return docs
 
 
-def construct_data(special_tokens, seqs, mask_prob, device):
-    batch_size = len(seqs)
-    max_seq_len = max([len(seq) for seq in seqs])
-
-    # padding input sequences
-    seqs = [seq + [special_tokens.pad_token()]*(max_seq_len-len(seq)) for seq in seqs]
-
-    # convert to tensors
-    seqs = torch.FloatTensor(np.array(seqs))
-
-    # get mask token masks
-    special_token_masks = torch.zeros(seqs[:,:,0].size()).bool()
-    for special_token_id in [special_tokens.pad_token(), special_tokens.cls_token()]:
-        special_token_masks = special_token_masks | (seqs == special_token_id)
-    # sample mask token masks
-    mask_token_probs = torch.FloatTensor([mask_prob]).expand_as(seqs[:,:,0])  # [batch_size, max_seq_len]
-    mask_token_probs = mask_token_probs.masked_fill(special_token_masks, 0.0)
-    while True:  # prevent that there is not any mask token
-        mask_token_masks = torch.bernoulli(mask_token_probs).bool()
-        if (mask_token_masks.long().sum(1) == 0).sum() == 0:
-            break
-
-    # input ids
-    input_ids = seqs.clone()
-    input_ids[mask_token_masks] = torch.FloatTensor(special_tokens.mask_token())
-
-    # position ids
-    position_ids = [list(range(max_seq_len))] * batch_size
-    position_ids = torch.LongTensor(position_ids)
-
-    attn_masks = input_ids.sum(dim=2) == torch.FloatTensor(special_tokens.pad_token()).sum()
-    attn_masks = torch.tensor(~attn_masks,dtype=torch.float)
-
-    return {
-        "input_embeds": input_ids.to(device),
-        "position_ids": position_ids.to(device),
-        "attn_masks": attn_masks.to(device)
-    }, seqs.to(device),mask_token_masks.to(device)
 
 
-def forward_step(model,data_source, batch_data, mask_prob):
-    data_dict, correct_tokens, masked_tokens = construct_data(data_source,batch_data, mask_prob, model.device)
-    
-    
+def forward_step(model, batch_data):
+    data_dict, correct_tokens, masked_tokens = batch_data
+    data_dict['input_embeds'] = data_dict['input_embeds'].to(model.device)
+    data_dict['position_ids'] = data_dict['position_ids'].to(model.device)
+    data_dict['attn_masks'] = data_dict['attn_masks'].to(model.device)
     # forward
     model_outputs = model(
         data_dict
