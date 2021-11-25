@@ -37,6 +37,7 @@ class DataSource(torch.utils.data.Dataset):
         # Load dataset
         self.docs = docs
         self.mask_prob = 0.15
+        self.hdf5 =  h5py.File(os.environ['SGE_LOCALDIR'] + '/dataset.hdf5', 'r') 
 
         # Calculate basic statistics
         self.statistics["n_docs"] = len(self.docs)
@@ -55,11 +56,9 @@ class DataSource(torch.utils.data.Dataset):
         return [-1]*self.num_sentence_embedding_dim
 
     def __getitem__(self, idx):
-        with h5py.File(os.environ['SGE_LOCALDIR'] + '/dataset.hdf5', 'r') as f:
-            seq = f[self.stage + '/' + self.docs[idx%len(self.docs)]][:]
-        
-        if len(seq) > self.max_seq_len:
-            start_pos = torch.randint(0,len(seq) - self.max_seq_len,(1,))
+        seq = self.hdf5[self.stage + '/' + self.docs[idx%len(self.docs)]]
+        if seq.shape[0] > self.max_seq_len:
+            start_pos = torch.randint(0,seq.shape[0] - self.max_seq_len,(1,))
         else:
             start_pos = 0
         seq = [self.cls_token()] + seq[start_pos:start_pos+self.max_seq_len - 1].tolist()
